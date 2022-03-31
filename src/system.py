@@ -114,7 +114,7 @@ class DRSystem(object):
         self.npoints_output = npoints_output
 
     @timing
-    def gen_operator_data(self, space, m, num):
+    def gen_operator_data(self, space, m, num, test=False):
         """For each input function, generate `npoints_output` data, so the total number N = num x npoints_output.
         """
         print("Generating operator data...", flush=True)
@@ -124,9 +124,79 @@ class DRSystem(object):
         # p = ProcessPool(nodes=config.processes)
         # s_values = p.map(self.eval_s, sensor_values)
         s_values = map(self.eval_s, sensor_values)
-        res = np.vstack(list(map(self.eval_s_sampling, sensor_values, s_values)))
+        if test:
+            res = np.vstack(list(map(self.eval_s_all, sensor_values, s_values)))
+        else:
+            res = np.vstack(list(map(self.eval_s_sampling, sensor_values, s_values)))
         return [res[:, :m], res[:, m:-1]], res[:, -1:]
 
+    @timing
+    def gen_operator_data_pi(self, space, m, num):
+        """For each input function, generate `npoints_output` data, so the total number N = num x npoints_output.
+        """
+        print("Generating operator data...", flush=True)
+        features = space.random(num)
+        sensors = np.linspace(0, 1, num=m)[:, None]
+        sensor_values = space.eval_u(features, sensors)
+        # p = ProcessPool(nodes=config.processes)
+        # s_values = p.map(self.eval_s, sensor_values)
+        s_values = list(map(self.eval_s, sensor_values))
+   
+        res = np.vstack(list(map(self.eval_s_sampling_res, sensor_values, s_values)))
+        bcs = np.vstack(list(map(self.eval_s_sampling_bcs, sensor_values, s_values)))
+        return [res[:, :m], res[:, m:-1]], res[:, -1:], [bcs[:, :m], bcs[:, m:-1]], bcs[:, -1:]
+    
+    def eval_s_sampling_res(self, sensor_value, s):
+        """Given a `sensor_value` of `u` and the corresponding solution `s`, generate the 
+        sampling outputs.
+        """
+        m = sensor_value.shape[0]
+        x = np.random.randint(m, size=self.npoints_output)
+        # t = np.random.randint(self.Nt, size=self.npoints_output)
+        t = np.random.uniform(0, self.Nt, size=self.npoints_output)
+        xt = np.hstack([x[:, None], t[:, None]]) * [1 / (m - 1), self.T / (self.Nt - 1)]
+    
+        y = sensor_value[x][:, None]
+        return np.hstack([np.tile(sensor_value, (self.npoints_output, 1)), xt, y])
+    
+    def eval_s_sampling_bcs(self, sensor_value, s):
+        """Given a `sensor_value` of `u` and the corresponding solution `s`, generate the 
+        sampling outputs.
+        """
+        m = sensor_value.shape[0]
+        x_bc1 = np.zeros((self.npoints_output, 1))
+        x_bc2 = np.ones((self.npoints_output, 1))
+        # x_bc3 = np.random.randint(m, size=(self.npoints_output,1))
+        x_bc3 = np.random.uniform(size=(self.npoints_output,1))
+        x_bcs = np.vstack((x_bc1, x_bc2, x_bc3))
+
+        # t_bc1 = np.random.randint(self.Nt, size=(2*self.npoints_output,1))
+        t_bc1 = np.random.uniform(0, self.T, size=(2*self.npoints_output,1))
+        t_bc2 = np.zeros((self.npoints_output, 1))
+        t_bcs = np.vstack([t_bc1, t_bc2])
+        
+        xt = np.hstack([x_bcs, t_bcs]) # * [1 / (m - 1), self.T / (self.Nt - 1)]
+    
+        y = np.zeros((3*self.npoints_output, 1))
+        # print(xt.shape, y.shape)
+
+        return np.hstack([np.tile(sensor_value, (3*self.npoints_output, 1)), xt, y])
+
+    def eval_s_all(self, sensor_value, s):
+        """Given a `sensor_value` of `u` and the corresponding solution `s`, generate the 
+        sampling outputs.
+        """
+        m = sensor_value.shape[0]
+        # x = np.random.randint(m, size=self.npoints_output)
+        # t = np.random.randint(self.Nt, size=self.npoints_output)
+        # xt = np.hstack([x[:, None], t[:, None]]) * [1 / (m - 1), self.T / (self.Nt - 1)]
+        x = np.arange(m)
+        t = np.arange(self.Nt)
+        X,T = np.meshgrid(x,t)
+        xt = np.hstack((X.T.flatten()[:, None], T.T.flatten()[:, None])) * [1 / (m - 1), self.T / (self.Nt - 1)]
+        y = s.flatten()[:, None]
+        return np.hstack([np.tile(sensor_value, (m*self.Nt, 1)), xt, y])
+    
     def eval_s_sampling(self, sensor_value, s):
         """Given a `sensor_value` of `u` and the corresponding solution `s`, generate the 
         sampling outputs.

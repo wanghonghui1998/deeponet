@@ -1,0 +1,6 @@
+*.dat
+*.npz
+*/__pycache__/
+exp/
+model/
+data/
